@@ -97,6 +97,14 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
 .mbtn.ok:hover{background:#085041}
 .mbtn.danger{background:#fff;border-color:#e74c3c;color:#e74c3c}
 
+
+/* AUTOCOMPLETE */
+.ac-wrap{position:relative}
+.ac-list{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #1D9E75;border-top:none;border-radius:0 0 6px 6px;z-index:300;max-height:160px;overflow-y:auto;display:none}
+.ac-list.open{display:block}
+.ac-item{padding:8px 10px;cursor:pointer;font-size:13px;border-bottom:0.5px solid #f0f0f0}
+.ac-item:hover,.ac-item.active{background:#E1F5EE;color:#085041}
+
 /* COPY MODAL */
 .copy-days{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
 .copy-day{padding:6px;border:1px solid #ddd;border-radius:6px;text-align:center;cursor:pointer;font-size:11px;font-weight:700;transition:all .12s}
@@ -169,7 +177,12 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
       </div>
     </div>
     <div class="fix-info" id="fix-info"></div>
-    <div class="frow"><label>Nom</label><input id="m-nom" placeholder="Nom i cognoms" autocomplete="off"></div>
+    <div class="frow"><label>Nom</label>
+      <div class="ac-wrap">
+        <input id="m-nom" placeholder="Nom i cognoms" autocomplete="off" oninput="onNomInput()" onkeydown="onNomKey(event)">
+        <div class="ac-list" id="ac-list"></div>
+      </div>
+    </div>
     <div class="frow"><label>Rol</label>
       <select id="m-rol">
         <option value="cuina">Cuina</option>
@@ -517,6 +530,62 @@ async function doCopy(){
   closeCopyModal();
   await loadData();
 }
+
+
+// ── AUTOCOMPLETAR ─────────────────────────────────────────────────
+function getAllKnownNames(){
+  const noms = new Set();
+  fixosData.forEach(w=>noms.add(w.nom));
+  extresData.forEach(w=>noms.add(w.nom));
+  return [...noms].sort((a,b)=>a.localeCompare(b,'ca'));
+}
+
+let acActiveIdx = -1;
+
+function onNomInput(){
+  const val = document.getElementById('m-nom').value.trim().toLowerCase();
+  const list = document.getElementById('ac-list');
+  acActiveIdx = -1;
+  if(!val){ list.classList.remove('open'); list.innerHTML=''; return; }
+  const matches = getAllKnownNames().filter(n=>n.toLowerCase().includes(val));
+  if(!matches.length){ list.classList.remove('open'); list.innerHTML=''; return; }
+  list.innerHTML = matches.map((n,i)=>`<div class="ac-item" data-idx="${i}" onmousedown="pickName('${n.replace(/'/g,"\'")}')">${n}</div>`).join('');
+  list.classList.add('open');
+}
+
+function pickName(nom){
+  document.getElementById('m-nom').value = nom;
+  document.getElementById('ac-list').classList.remove('open');
+  document.getElementById('ac-list').innerHTML = '';
+  acActiveIdx = -1;
+}
+
+function onNomKey(e){
+  const list = document.getElementById('ac-list');
+  const items = list.querySelectorAll('.ac-item');
+  if(!list.classList.contains('open')) return;
+  if(e.key==='ArrowDown'){
+    e.preventDefault();
+    acActiveIdx = Math.min(acActiveIdx+1, items.length-1);
+    items.forEach((el,i)=>el.classList.toggle('active',i===acActiveIdx));
+  } else if(e.key==='ArrowUp'){
+    e.preventDefault();
+    acActiveIdx = Math.max(acActiveIdx-1, 0);
+    items.forEach((el,i)=>el.classList.toggle('active',i===acActiveIdx));
+  } else if(e.key==='Enter' && acActiveIdx>=0){
+    e.preventDefault();
+    e.stopPropagation();
+    pickName(items[acActiveIdx].textContent);
+  } else if(e.key==='Escape'){
+    list.classList.remove('open');
+  }
+}
+
+document.addEventListener('click', function(e){
+  if(!e.target.closest('.ac-wrap')){
+    document.getElementById('ac-list').classList.remove('open');
+  }
+});
 
 // ── EVENTS ────────────────────────────────────────────────────────
 document.getElementById('modal-overlay').addEventListener('click',function(e){if(e.target===this)closeModal()});
