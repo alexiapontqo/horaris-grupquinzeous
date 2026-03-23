@@ -110,6 +110,14 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
 .copy-day{padding:6px;border:1px solid #ddd;border-radius:6px;text-align:center;cursor:pointer;font-size:11px;font-weight:700;transition:all .12s}
 .copy-day:hover,.copy-day.selected{background:#E1F5EE;border-color:#1D9E75;color:#085041}
 
+
+/* DRAG & DROP */
+.chip{cursor:grab}
+.chip.dragging{opacity:.4;cursor:grabbing}
+.chip.drag-over{border-top:2px solid #1D9E75}
+.drag-handle{font-size:10px;opacity:.3;cursor:grab;padding:0 2px;flex-shrink:0;user-select:none}
+.drag-handle:hover{opacity:.7}
+
 @media print{header .week-nav,.hbtn,.add-btn,.chip-btn,.chip-actions,.logout-btn{display:none!important}body{background:#fff}.main{padding:4px}}
 </style>
 </head>
@@ -371,7 +379,12 @@ function renderTable(){
           const chipStyle = isFix
             ? `background:${ROL_BG[w.rol]};color:${ROL_TC[w.rol]};border-left:2px solid ${ROL_COLOR[w.rol]}`
             : `background:#FFFBEB;color:#92400e;border-left:2px solid #FCD34D`;
-          html += `<div class="chip" style="${chipStyle}" ${canEdit?`onclick="openEdit('${w.id}','${w.tipus}','${loc.id}','${torn}',${di},'${dk}')"`:''}">
+          html += `<div class="chip" style="${chipStyle}"
+            draggable="${canEdit}"
+            data-id="${w.id}" data-tipus="${w.tipus}" data-loc="${loc.id}" data-torn="${torn}" data-di="${di}" data-dk="${dk}"
+            ${canEdit?`onclick="openEdit('${w.id}','${w.tipus}','${loc.id}','${torn}',${di},'${dk}')"
+            ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)"`:''}>
+            ${canEdit?'<span class="drag-handle" onclick="event.stopPropagation()">&#9776;</span>':''}
             <div class="chip-dot" style="background:${ROL_COLOR[w.rol]}"></div>
             <span class="chip-name" title="${w.nom}">${w.nom}</span>
             <span class="chip-hores">${w.hora_ini}-${w.hora_fi}</span>
@@ -531,6 +544,64 @@ async function doCopy(){
   await loadData();
 }
 
+
+
+// ── DRAG & DROP ───────────────────────────────────────────────────
+let dragSrc = null;
+
+function onDragStart(e){
+  dragSrc = e.currentTarget;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('drag-over'));
+  if(e.currentTarget !== dragSrc) e.currentTarget.classList.add('drag-over');
+}
+
+function onDragEnd(e){
+  document.querySelectorAll('.chip').forEach(c=>{
+    c.classList.remove('dragging');
+    c.classList.remove('drag-over');
+  });
+  dragSrc = null;
+}
+
+async function onDrop(e){
+  e.preventDefault();
+  e.stopPropagation();
+  const target = e.currentTarget;
+  if(!dragSrc || dragSrc === target) return;
+
+  // Recollim els chips del mateix day-cell
+  const cell = target.closest('.day-cell');
+  const chips = [...cell.querySelectorAll('.chip')];
+  const srcIdx = chips.indexOf(dragSrc);
+  const tgtIdx = chips.indexOf(target);
+  if(srcIdx === -1 || tgtIdx === -1) return;
+
+  // Reordenem localment per calcular el nou ordre
+  const reordered = [...chips];
+  reordered.splice(srcIdx, 1);
+  reordered.splice(tgtIdx, 0, dragSrc);
+
+  // Actualitzem l'ordre a Supabase
+  const updates = reordered.map((chip, i) => ({
+    id: chip.dataset.id,
+    tipus: chip.dataset.tipus,
+    ordre: i
+  }));
+
+  await Promise.all(updates.map(u => {
+    const table = u.tipus === 'fix' ? 'fixos' : 'extres';
+    return sb.from(table).update({ordre: u.ordre}).eq('id', u.id);
+  }));
+
+  await loadData();
+}
 
 // ── AUTOCOMPLETAR ─────────────────────────────────────────────────
 function getAllKnownNames(){
