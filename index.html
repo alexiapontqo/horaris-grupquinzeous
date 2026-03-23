@@ -118,6 +118,24 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
 .drag-handle{font-size:10px;opacity:.3;cursor:grab;padding:0 2px;flex-shrink:0;user-select:none}
 .drag-handle:hover{opacity:.7}
 
+
+/* MODAL PERSONA */
+.persona-modal{background:#fff;border-radius:12px;padding:1.4rem;width:520px;max-width:96vw;max-height:85vh;overflow-y:auto}
+.persona-select{display:flex;gap:8px;margin-bottom:1rem;align-items:center}
+.persona-select select{flex:1;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;outline:none}
+.persona-select select:focus{border-color:#1D9E75}
+.persona-week-nav{display:flex;align-items:center;gap:8px;margin-bottom:1rem}
+.persona-week-lbl{font-size:12px;font-weight:700;flex:1;text-align:center}
+.p-empty{text-align:center;color:#aaa;padding:2rem;font-size:13px}
+.p-day{margin-bottom:10px}
+.p-day-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#666;padding:4px 0;border-bottom:1px solid #eee;margin-bottom:6px}
+.p-torn{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;margin-bottom:4px;font-size:12px}
+.p-torn-loc{font-weight:700;flex:1}
+.p-torn-info{font-size:11px;color:#888}
+.p-total{background:#E1F5EE;color:#085041;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:700;text-align:center;margin-top:12px}
+.p-print-btn{width:100%;margin-top:10px;padding:8px;background:#0F6E56;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer}
+.p-print-btn:hover{background:#085041}
+
 @media print{header .week-nav,.hbtn,.add-btn,.chip-btn,.chip-actions,.logout-btn{display:none!important}body{background:#fff}.main{padding:4px}}
 </style>
 </head>
@@ -148,6 +166,7 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
       <button class="hbtn" onclick="changeWeek(1)">&#8594;</button>
     </div>
     <button class="hbtn" onclick="window.print()">Imprimir</button>
+    <button class="hbtn" onclick="openHorariPersona()">Per persona</button>
     <div class="user-badge">
       <span id="user-display"></span>
       <button class="logout-btn" onclick="doLogout()">&#10005;</button>
@@ -229,6 +248,28 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
     <div class="modal-btns">
       <button class="mbtn" onclick="closeCopyModal()">Cancel·lar</button>
       <button class="mbtn ok" onclick="doCopy()">Copiar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PERSONA -->
+<div class="modal-overlay" id="persona-overlay">
+  <div class="persona-modal">
+    <h3 style="margin-bottom:.75rem">Horari per persona</h3>
+    <div class="persona-select">
+      <select id="persona-sel" onchange="renderPersona()">
+        <option value="">— Selecciona un treballador —</option>
+      </select>
+    </div>
+    <div class="persona-week-nav">
+      <button class="mbtn" onclick="changePersonaWeek(-1)">&#8592;</button>
+      <div class="persona-week-lbl" id="persona-week-lbl"></div>
+      <button class="mbtn" onclick="changePersonaWeek(1)">&#8594;</button>
+    </div>
+    <div id="persona-content"></div>
+    <button class="p-print-btn" onclick="printPersona()">Imprimir aquest horari</button>
+    <div class="modal-btns" style="margin-top:.75rem">
+      <button class="mbtn" onclick="closePersonaModal()">Tancar</button>
     </div>
   </div>
 </div>
@@ -546,7 +587,122 @@ async function doCopy(){
 
 
 
-// ── DRAG & DROP ───────────────────────────────────────────────────
+
+// ── HORARI PER PERSONA ────────────────────────────────────────────
+let personaWeekOffset = 0;
+
+function openHorariPersona(){
+  personaWeekOffset = weekOffset;
+  const sel = document.getElementById('persona-sel');
+  const noms = getAllKnownNames();
+  sel.innerHTML = '<option value="">— Selecciona un treballador —</option>' +
+    noms.map(n=>`<option value="${n}">${n}</option>`).join('');
+  renderPersonaWeek();
+  document.getElementById('persona-overlay').classList.add('open');
+}
+
+function closePersonaModal(){
+  document.getElementById('persona-overlay').classList.remove('open');
+}
+
+function changePersonaWeek(n){
+  personaWeekOffset += n;
+  renderPersonaWeek();
+  renderPersona();
+}
+
+function renderPersonaWeek(){
+  const ws = weekStart(personaWeekOffset);
+  const we = new Date(ws); we.setDate(ws.getDate()+6);
+  document.getElementById('persona-week-lbl').textContent =
+    `${ws.getDate()} ${MESOS[ws.getMonth()]} – ${we.getDate()} ${MESOS[we.getMonth()]} ${we.getFullYear()}`;
+}
+
+function renderPersona(){
+  const nom = document.getElementById('persona-sel').value;
+  const cont = document.getElementById('persona-content');
+  if(!nom){ cont.innerHTML = '<div class="p-empty">Selecciona un treballador per veure el seu horari.</div>'; return; }
+
+  const ws = weekStart(personaWeekOffset);
+  let totalMins = 0;
+  let html = '';
+
+  DIES.forEach((dia, di)=>{
+    const d = new Date(ws); d.setDate(ws.getDate()+di);
+    const dk = dateKey(d);
+    const ds = getDiaSem(d);
+
+    const tornsDelDia = [];
+    LOCS.forEach(loc=>{
+      TORNS.forEach(torn=>{
+        const fs = fixosData.filter(w=>w.nom===nom&&w.loc_id===loc.id&&w.torn===torn&&w.dia_setmana===ds);
+        const es = extresData.filter(w=>w.nom===nom&&w.loc_id===loc.id&&w.torn===torn&&w.data_dia===dk);
+        ;[...fs,...es].forEach(w=>{
+          const ini = w.hora_ini.split(':').map(Number);
+          const fi  = w.hora_fi.split(':').map(Number);
+          const mins = (fi[0]*60+fi[1]) - (ini[0]*60+ini[1]);
+          totalMins += mins > 0 ? mins : 0;
+          tornsDelDia.push({loc, torn, ini:w.hora_ini, fi:w.hora_fi, rol:w.rol, mins});
+        });
+      });
+    });
+
+    if(!tornsDelDia.length) return;
+
+    html += `<div class="p-day">
+      <div class="p-day-header">${dia} ${d.getDate()}/${d.getMonth()+1}</div>`;
+    tornsDelDia.forEach(t=>{
+      const bg = ROL_BG[t.rol]||'#f5f5f2';
+      const tc = ROL_TC[t.rol]||'#333';
+      const tornStyle = t.torn==='Migdia'?'background:#FFF9DB;color:#854F0B':'background:#E8EAF6;color:#283593';
+      html += `<div class="p-torn" style="background:${bg};color:${tc}">
+        <div class="chip-dot" style="background:${ROL_COLOR[t.rol]}"></div>
+        <span class="p-torn-loc">${t.loc.nom}</span>
+        <span style="font-size:10px;padding:2px 6px;border-radius:4px;${tornStyle}">${t.torn}</span>
+        <span class="p-torn-info">${t.ini} – ${t.fi}</span>
+      </div>`;
+    });
+    html += '</div>';
+  });
+
+  if(!html) html = '<div class="p-empty">Sense torns assignats aquesta setmana.</div>';
+
+  const hores = Math.floor(totalMins/60);
+  const mins  = totalMins % 60;
+  html += `<div class="p-total">Total setmana: ${hores}h ${mins>0?mins+'min':''}</div>`;
+  cont.innerHTML = html;
+}
+
+function printPersona(){
+  const nom = document.getElementById('persona-sel').value || 'Treballador';
+  const ws = weekStart(personaWeekOffset);
+  const we = new Date(ws); we.setDate(ws.getDate()+6);
+  const periode = `${ws.getDate()}/${ws.getMonth()+1} – ${we.getDate()}/${we.getMonth()+1}/${we.getFullYear()}`;
+  const contingut = document.getElementById('persona-content').innerHTML;
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Horari ${nom}</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:20px}
+      h2{color:#0F6E56;margin-bottom:4px}
+      p{color:#888;font-size:12px;margin-bottom:20px}
+      .p-day{margin-bottom:12px}
+      .p-day-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#666;padding:4px 0;border-bottom:1px solid #eee;margin-bottom:6px}
+      .p-torn{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;margin-bottom:4px;font-size:12px}
+      .p-torn-loc{font-weight:700;flex:1}
+      .p-torn-info{font-size:11px;color:#888}
+      .p-total{background:#E1F5EE;color:#085041;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:700;text-align:center;margin-top:12px}
+      .chip-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px}
+    </style></head><body>
+    <h2>Horari de ${nom}</h2>
+    <p>Setmana: ${periode}</p>
+    ${contingut}
+    </body></html>`);
+  win.document.close();
+  win.print();
+}
+
+// ── DRAG & DROP ───────────────────────────────────────────────
 let dragSrc = null;
 
 function onDragStart(e){
@@ -662,7 +818,7 @@ document.addEventListener('click', function(e){
 document.getElementById('modal-overlay').addEventListener('click',function(e){if(e.target===this)closeModal()});
 document.getElementById('copy-overlay').addEventListener('click',function(e){if(e.target===this)closeCopyModal()});
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModal();closeCopyModal()}
+  if(e.key==='Escape'){closeModal();closeCopyModal();closePersonaModal()}
   if(e.key==='Enter'&&pending&&!editingId) saveWorker();
 });
 document.getElementById('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
