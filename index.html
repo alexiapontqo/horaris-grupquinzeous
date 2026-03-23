@@ -736,7 +736,9 @@ function renderMes(){
           const isAbsent = absenciesData.some(a=>a.worker_id===w.id && a.data_dia===dk);
           const ini = w.hora_ini.split(':').map(Number);
           const fi  = w.hora_fi.split(':').map(Number);
-          const mins = (fi[0]*60+fi[1]) - (ini[0]*60+ini[1]);
+          let fiMins2 = fi[0]*60+fi[1];
+          if(fiMins2 === 0) fiMins2 = 24*60;
+          const mins = fiMins2 - (ini[0]*60+ini[1]);
           if(!isAbsent) totalMins += mins > 0 ? mins : 0;
           tornsDelDia.push({loc, torn, ini:w.hora_ini, fi:w.hora_fi, rol:w.rol, isAbsent});
         });
@@ -844,7 +846,9 @@ function renderPersona(){
         ;[...fs,...es].forEach(w=>{
           const ini = w.hora_ini.split(':').map(Number);
           const fi  = w.hora_fi.split(':').map(Number);
-          const mins = (fi[0]*60+fi[1]) - (ini[0]*60+ini[1]);
+          let fiMins = fi[0]*60+fi[1];
+          if(fiMins === 0) fiMins = 24*60;
+          const mins = fiMins - (ini[0]*60+ini[1]);
           totalMins += mins > 0 ? mins : 0;
           tornsDelDia.push({loc, torn, ini:w.hora_ini, fi:w.hora_fi, rol:w.rol, mins});
         });
