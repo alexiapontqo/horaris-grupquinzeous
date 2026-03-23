@@ -136,6 +136,29 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
 .p-print-btn{width:100%;margin-top:10px;padding:8px;background:#0F6E56;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer}
 .p-print-btn:hover{background:#085041}
 
+
+/* ABSENCIES */
+.chip.absent{opacity:.5;text-decoration:line-through;border-left-color:#e74c3c!important;background:#fee!important;color:#c0392b!important}
+.chip-absent-btn{background:none;border:none;cursor:pointer;font-size:10px;padding:1px 3px;border-radius:3px;color:inherit;opacity:.5}
+.chip-absent-btn:hover{opacity:1;background:rgba(0,0,0,.1)}
+.chip-absent-btn.active{opacity:1;color:#e74c3c}
+
+/* MODAL MES */
+.mes-modal{background:#fff;border-radius:12px;padding:1.4rem;width:700px;max-width:97vw;max-height:88vh;overflow-y:auto}
+.mes-nav{display:flex;align-items:center;gap:8px;margin-bottom:1rem}
+.mes-lbl{font-size:13px;font-weight:700;flex:1;text-align:center}
+.mes-persona-sel{display:flex;gap:8px;margin-bottom:1rem}
+.mes-persona-sel select{flex:1;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;outline:none}
+.mes-persona-sel select:focus{border-color:#1D9E75}
+.mes-setmana{margin-bottom:14px}
+.mes-setmana-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#1D9E75;padding:5px 10px;border-radius:5px;margin-bottom:6px}
+.mes-torn{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:5px;margin-bottom:3px;font-size:12px}
+.mes-torn.absent-row{opacity:.5;text-decoration:line-through;background:#fee!important;color:#c0392b!important}
+.mes-torn-dia{font-weight:700;width:80px;flex-shrink:0}
+.mes-torn-loc{flex:1}
+.mes-torn-info{font-size:11px;color:#888;white-space:nowrap}
+.mes-total{background:#E1F5EE;color:#085041;border-radius:6px;padding:8px 12px;font-size:13px;font-weight:700;text-align:center;margin-top:12px}
+
 @media print{header .week-nav,.hbtn,.add-btn,.chip-btn,.chip-actions,.logout-btn{display:none!important}body{background:#fff}.main{padding:4px}}
 </style>
 </head>
@@ -167,6 +190,7 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
     </div>
     <button class="hbtn" onclick="window.print()">Imprimir</button>
     <button class="hbtn" onclick="openHorariPersona()">Per persona</button>
+    <button class="hbtn" onclick="openHorariMes()">Per mes</button>
     <div class="user-badge">
       <span id="user-display"></span>
       <button class="logout-btn" onclick="doLogout()">&#10005;</button>
@@ -252,6 +276,29 @@ td{border:1px solid #e0e0d8;vertical-align:top;padding:0}
   </div>
 </div>
 
+
+<!-- MODAL MES -->
+<div class="modal-overlay" id="mes-overlay">
+  <div class="mes-modal">
+    <h3 style="margin-bottom:.75rem">Horari mensual per persona</h3>
+    <div class="mes-persona-sel">
+      <select id="mes-persona-sel" onchange="renderMes()">
+        <option value="">— Selecciona un treballador —</option>
+      </select>
+    </div>
+    <div class="mes-nav">
+      <button class="mbtn" onclick="changeMes(-1)">&#8592;</button>
+      <div class="mes-lbl" id="mes-lbl"></div>
+      <button class="mbtn" onclick="changeMes(1)">&#8594;</button>
+    </div>
+    <div id="mes-content"></div>
+    <button class="p-print-btn" onclick="printMes()">Descarregar / Imprimir</button>
+    <div class="modal-btns" style="margin-top:.75rem">
+      <button class="mbtn" onclick="closeMesModal()">Tancar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL PERSONA -->
 <div class="modal-overlay" id="persona-overlay">
   <div class="persona-modal">
@@ -313,6 +360,7 @@ let pending     = null;
 let tipusActual = 'fix';
 let editingId   = null;
 let copySource  = null;
+let absenciesData = [];
 let copyDaySelected = null;
 
 // ── LOGIN ─────────────────────────────────────────────────────────
@@ -342,12 +390,14 @@ function doLogout(){
 async function loadData(){
   document.getElementById('loading').style.display = 'block';
   document.getElementById('main-table').style.display = 'none';
-  const [f, e] = await Promise.all([
+  const [f, e, a] = await Promise.all([
     sb.from('fixos').select('*').order('ordre').order('created_at'),
     sb.from('extres').select('*').order('ordre').order('created_at'),
+    sb.from('absencies').select('*'),
   ]);
-  fixosData  = f.data || [];
-  extresData = e.data || [];
+  fixosData     = f.data || [];
+  extresData    = e.data || [];
+  absenciesData = a.data || [];
   document.getElementById('loading').style.display = 'none';
   document.getElementById('main-table').style.display = '';
   renderTable();
@@ -417,7 +467,8 @@ function renderTable(){
         html += `<td class="day-cell">`;
         workers.forEach(w=>{
           const isFix = w.tipus==='fix';
-          const chipStyle = isFix
+          const isAbsent = absenciesData.some(a=>a.worker_id===w.id && a.data_dia===dk);
+          const chipStyle = isAbsent ? 'background:#fee;color:#c0392b;border-left:2px solid #e74c3c' : isFix
             ? `background:${ROL_BG[w.rol]};color:${ROL_TC[w.rol]};border-left:2px solid ${ROL_COLOR[w.rol]}`
             : `background:#FFFBEB;color:#92400e;border-left:2px solid #FCD34D`;
           html += `<div class="chip" style="${chipStyle}"
@@ -432,6 +483,7 @@ function renderTable(){
             <span class="chip-badge">${isFix?'fix':'extra'}</span>
             ${canEdit?`<span class="chip-actions">
               <button class="chip-btn" title="Copiar" onclick="openCopy(event,'${w.id}','${w.tipus}','${loc.id}','${torn}',${di})">&#9112;</button>
+              <button class="chip-absent-btn${isAbsent?' active':''}" title="${isAbsent?'Treure absència':'Marcar absent'}" onclick="toggleAbsent(event,'${w.id}','${w.tipus}','${dk}')">&#10006;</button>
             </span>`:''}
           </div>`;
         });
@@ -587,6 +639,158 @@ async function doCopy(){
 
 
 
+
+
+// ── ABSÈNCIES ─────────────────────────────────────────────────────
+async function toggleAbsent(e, workerId, tipus, dk){
+  e.stopPropagation();
+  const existing = absenciesData.find(a=>a.worker_id===workerId && a.data_dia===dk);
+  if(existing){
+    await sb.from('absencies').delete().eq('id', existing.id);
+  } else {
+    await sb.from('absencies').insert({worker_id: workerId, data_dia: dk, tipus});
+  }
+  await loadData();
+}
+
+// ── HORARI MES ────────────────────────────────────────────────────
+let mesOffset = 0;
+
+function openHorariMes(){
+  const sel = document.getElementById('mes-persona-sel');
+  const noms = getAllKnownNames();
+  sel.innerHTML = '<option value="">— Selecciona un treballador —</option>' +
+    noms.map(n=>`<option value="${n}">${n}</option>`).join('');
+  renderMesLabel();
+  document.getElementById('mes-content').innerHTML = '';
+  document.getElementById('mes-overlay').classList.add('open');
+}
+
+function closeMesModal(){
+  document.getElementById('mes-overlay').classList.remove('open');
+}
+
+function changeMes(n){
+  mesOffset += n;
+  renderMesLabel();
+  renderMes();
+}
+
+function renderMesLabel(){
+  const d = new Date();
+  d.setMonth(d.getMonth() + mesOffset);
+  document.getElementById('mes-lbl').textContent =
+    MESOS_LLARGS[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+const MESOS_LLARGS = ['Gener','Febrer','Març','Abril','Maig','Juny','Juliol','Agost','Setembre','Octubre','Novembre','Desembre'];
+
+function getMesDays(){
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + mesOffset);
+  const any = d.getFullYear();
+  const mes = d.getMonth();
+  const dies = [];
+  const cur = new Date(any, mes, 1);
+  while(cur.getMonth() === mes){
+    dies.push(new Date(cur));
+    cur.setDate(cur.getDate()+1);
+  }
+  return dies;
+}
+
+function renderMes(){
+  const nom = document.getElementById('mes-persona-sel').value;
+  const cont = document.getElementById('mes-content');
+  if(!nom){ cont.innerHTML = '<div class="p-empty">Selecciona un treballador.</div>'; return; }
+
+  const dies = getMesDays();
+  let totalMins = 0;
+  let html = '';
+  let setmanaActual = null;
+  let setmanaHtml = '';
+
+  dies.forEach(d => {
+    const dk = dateKey(d);
+    const ds = getDiaSem(d);
+    const diaNum = d.getDay()===0?6:d.getDay()-1;
+
+    // Nou bloc setmanal
+    const ws = new Date(d);
+    ws.setDate(d.getDate() - diaNum);
+    const wsKey = dateKey(ws);
+    if(wsKey !== setmanaActual){
+      if(setmanaHtml) html += `<div class="mes-setmana">${setmanaHtml}</div>`;
+      const we = new Date(ws); we.setDate(ws.getDate()+6);
+      setmanaHtml = `<div class="mes-setmana-hdr">${ws.getDate()}/${ws.getMonth()+1} – ${we.getDate()}/${we.getMonth()+1}</div>`;
+      setmanaActual = wsKey;
+    }
+
+    const tornsDelDia = [];
+    LOCS.forEach(loc=>{
+      TORNS.forEach(torn=>{
+        const fs = fixosData.filter(w=>w.nom===nom&&w.loc_id===loc.id&&w.torn===torn&&w.dia_setmana===ds);
+        const es = extresData.filter(w=>w.nom===nom&&w.loc_id===loc.id&&w.torn===torn&&w.data_dia===dk);
+        ;[...fs,...es].forEach(w=>{
+          const isAbsent = absenciesData.some(a=>a.worker_id===w.id && a.data_dia===dk);
+          const ini = w.hora_ini.split(':').map(Number);
+          const fi  = w.hora_fi.split(':').map(Number);
+          const mins = (fi[0]*60+fi[1]) - (ini[0]*60+ini[1]);
+          if(!isAbsent) totalMins += mins > 0 ? mins : 0;
+          tornsDelDia.push({loc, torn, ini:w.hora_ini, fi:w.hora_fi, rol:w.rol, isAbsent});
+        });
+      });
+    });
+
+    tornsDelDia.forEach(t=>{
+      const bg = t.isAbsent ? '#fee' : (ROL_BG[t.rol]||'#f5f5f2');
+      const tc = t.isAbsent ? '#c0392b' : (ROL_TC[t.rol]||'#333');
+      setmanaHtml += `<div class="mes-torn${t.isAbsent?' absent-row':''}" style="background:${bg};color:${tc}">
+        <span class="mes-torn-dia">${DIES[ds]} ${d.getDate()}/${d.getMonth()+1}</span>
+        <span class="mes-torn-loc">${t.loc.nom}</span>
+        <span style="font-size:10px;padding:2px 5px;border-radius:4px;${t.torn==='Migdia'?'background:#FFF9DB;color:#854F0B':'background:#E8EAF6;color:#283593'}">${t.torn}</span>
+        <span class="mes-torn-info">${t.ini} – ${t.fi}${t.isAbsent?' · ABSENT/A':''}</span>
+      </div>`;
+    });
+  });
+
+  if(setmanaHtml) html += `<div class="mes-setmana">${setmanaHtml}</div>`;
+  if(!html) html = '<div class="p-empty">Sense torns assignats aquest mes.</div>';
+
+  const hores = Math.floor(totalMins/60);
+  const mins  = totalMins % 60;
+  html += `<div class="mes-total">Total hores treballades: ${hores}h ${mins>0?mins+'min':''}</div>`;
+  cont.innerHTML = html;
+}
+
+function printMes(){
+  const nom = document.getElementById('mes-persona-sel').value || 'Treballador';
+  const d = new Date(); d.setMonth(d.getMonth()+mesOffset);
+  const periode = MESOS_LLARGS[d.getMonth()] + ' ' + d.getFullYear();
+  const contingut = document.getElementById('mes-content').innerHTML;
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Horari ${nom} – ${periode}</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;padding:20px}
+      h2{color:#0F6E56;margin-bottom:2px}p{color:#888;font-size:11px;margin-bottom:16px}
+      .mes-setmana{margin-bottom:12px}
+      .mes-setmana-hdr{font-size:10px;font-weight:700;text-transform:uppercase;color:#fff;background:#1D9E75;padding:4px 8px;border-radius:4px;margin-bottom:5px}
+      .mes-torn{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:4px;margin-bottom:2px;font-size:11px}
+      .mes-torn.absent-row{opacity:.6;text-decoration:line-through;background:#fee!important;color:#c0392b!important}
+      .mes-torn-dia{font-weight:700;width:90px;flex-shrink:0}
+      .mes-torn-loc{flex:1}
+      .mes-torn-info{font-size:10px;color:#888}
+      .mes-total{background:#E1F5EE;color:#085041;border-radius:5px;padding:7px 10px;font-size:12px;font-weight:700;text-align:center;margin-top:10px}
+      .p-empty{color:#aaa;text-align:center;padding:2rem}
+    </style></head><body>
+    <h2>Horari de ${nom}</h2><p>${periode}</p>
+    ${contingut}
+    </body></html>`);
+  win.document.close();
+  win.print();
+}
 
 // ── HORARI PER PERSONA ────────────────────────────────────────────
 let personaWeekOffset = 0;
@@ -818,7 +1022,7 @@ document.addEventListener('click', function(e){
 document.getElementById('modal-overlay').addEventListener('click',function(e){if(e.target===this)closeModal()});
 document.getElementById('copy-overlay').addEventListener('click',function(e){if(e.target===this)closeCopyModal()});
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModal();closeCopyModal();closePersonaModal()}
+  if(e.key==='Escape'){closeModal();closeCopyModal();closePersonaModal();closeMesModal()}
   if(e.key==='Enter'&&pending&&!editingId) saveWorker();
 });
 document.getElementById('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
